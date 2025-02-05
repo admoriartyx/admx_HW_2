@@ -74,7 +74,7 @@ def plot_stereo(theta, phi): # The xp, yp, zp are coordinates of point P on sphe
     plt.show()
     plt.savefig('Stereographic_Projection.png')
 
-#plot_stereo(2*np.pi/3, np.pi/4)
+plot_stereo(2*np.pi/3, np.pi/4)
 
 # The preservation of the angles in the projection shown in the .png demonstrates conformality.
 
@@ -138,12 +138,149 @@ def plot_great_circles():
     plt.show()
     plt.savefig('great_circles.png')
 
-#plot_great_circles()
+plot_great_circles()
 
 
 # Part c
+# Pulling the old function from Problem 1
+
+def spherical_to_cartesian_new(theta, phi):
+    y = np.array([np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), -np.sin(theta)])
+    z = np.array([-np.sin(phi), np.cos(phi), 0])
+    return y, z
+
+def parallel_transport_projection(theta0=np.pi/4):
+    alpha = 1.0
+    beta = 0.0
+    n_mag = 1.0
+
+    phis = np.linspace(0, 2*np.pi, 30)
+    thetas = theta0 * np.ones_like(phis)
+
+    x_sphere = np.sin(theta0) * np.cos(phis)
+    y_sphere = np.sin(theta0) * np.sin(phis)
+    z_sphere = np.cos(theta0) * np.ones_like(phis)
+    
+    delta = 2 * np.pi * (1 - np.cos(theta0))
+    V_theta = alpha * np.cos(delta * phis/(2*np.pi))
+    V_phi = alpha * np.sin(delta * phis/(2*np.pi))
+
+    x_proj, y_proj = stereo_proj(x_sphere, y_sphere, z_sphere)
+    
+    Vx_proj, Vy_proj = [], []
+    for i in range(len(phis)):
+        e_theta, e_phi = spherical_to_cartesian_new(theta0, phis[i])
+        vec_3d = V_theta[i]*e_theta + V_phi[i]*e_phi
+        z = z_sphere[i]
+        J = np.array([[1/(1-z), 0, x_sphere[i]/(1-z)**2],
+                      [0, 1/(1-z), y_sphere[i]/(1-z)**2]])
+        vec_proj = J @ vec_3d
+        Vx_proj.append(vec_proj[0])
+        Vy_proj.append(vec_proj[1])
+
+    fig = plt.figure(figsize=(12, 6))
+    
+    # 3D plot
+    ax1 = fig.add_subplot(121, projection='3d')
+    ax1.plot(x_sphere, y_sphere, z_sphere, 'b-', label=f'θ = {theta0:.2f} Path')
+    ax1.quiver(x_sphere[::3], y_sphere[::3], z_sphere[::3], 
+               V_theta[::3]*e_theta[0], V_theta[::3]*e_theta[1], V_theta[::3]*e_theta[2],
+               color='red', length=0.1, label='Transported Vector')
+    ax1.set_title(f'3D Parallel Transport\nLatitude θ={theta0:.2f}')
+    ax1.legend()
+    
+    # stereographic projection plot
+    ax2 = fig.add_subplot(122)
+    ax2.plot(x_proj, y_proj, 'b-', label='Projected Path')
+    ax2.quiver(x_proj[::3], y_proj[::3], 
+               np.array(Vx_proj)[::3], np.array(Vy_proj)[::3],
+               color='red', scale=15, width=0.003, label='Projected Vectors')
+    ax2.set_title(f'Stereographic Projection\nRotation: {delta/np.pi:.2f}π')
+    ax2.legend()
+    ax2.grid(True)
+    ax2.axis('equal')
+    
+    plt.tight_layout()
+    plt.savefig('Parallel_transport_projection_{theta0:.2f}.png')
+    plt.show()
+
+# create plots for different latitudes
 
 
+for theta0 in [np.pi/6, np.pi/4, np.pi/3]:
+    parallel_transport_projection(theta0)
+
+# Part d
+
+# Must check if inner products are conserved in the projection.
+# Immediately based on the hint I believe the inner products will be conserved
+# because the conformality of the stereographic projection maintains angles. 
+# Since the inner product is dependent upon the angle between two vectors, the inner product
+# will also be conserved.
+
+# However, the problem still asks for the plots so lets proceed.
+
+def projection_jacobian(x, y, z):
+    denom = 1 - z
+    J = np.array([[1/denom, 0, x/(denom**2)],
+                  [0, 1/denom, y/(denom**2)]])
+    return J
+
+
+num_points = 50
+thetas = np.linspace(0, np.pi, num_points)
+phis = np.zeros_like(thetas)
+
+results = []
+for theta in thetas:
+    x = np.sin(theta) * np.cos(0)
+    y = np.sin(theta) * np.sin(0)
+    z = np.cos(theta)
+    
+    e_theta = np.array([np.cos(theta), 0, -np.sin(theta)])
+    e_phi = np.array([0, 1, 0])
+    J = projection_jacobian(x, y, z)
+    
+    v_proj = J @ e_theta
+    w_proj = J @ e_phi
+    
+    orig_ip = np.dot(e_theta, e_phi)
+    proj_ip = np.dot(v_proj, w_proj)
+    
+    # Note that the first dot product should always be 0 b/c bases vectors.
+    conformal_factor = 1/(1 - z)
+    
+    results.append({
+        'theta': theta,
+        'z': z,
+        'orig_ip': orig_ip,
+        'proj_ip': proj_ip,
+        'lambda_sq': conformal_factor**2
+    })
+
+fig = plt.figure(figsize=(14, 7))
+
+ax1 = fig.add_subplot(111)
+zs = [r['z'] for r in results]
+proj_ips = [r['proj_ip'] for r in results]
+ax1.scatter(zs, proj_ips, c='r', label='Projected IP')
+ax1.plot(zs, [0]*len(zs), 'b--', label='Original IP')
+ax1.set_xlabel('z-coordinate on Sphere')
+ax1.set_ylabel('Inner Product')
+ax1.set_title('Inner Product After Projection\n(Orthogonal Vectors)')
+ax1.legend()
+ax1.grid(True)
+
+plt.tight_layout()
+plt.show()
+plt.savefig('Inner_products.png')
+
+# Our plot agrees with the conceptual analysis of the problem! The inner products agree.
+
+# Part f (should be part 3)
+# The holonomy of the unit sphere is unchanged after stereographic projection of parallel transport.
+# This is in part due to the conformal nature of the stereographic projection. Parallel transport
+# is also preserved by the conformality of the projection.
 
 
 
